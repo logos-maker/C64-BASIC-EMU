@@ -27,14 +27,17 @@ ikigui_image bg;	// Global graphics for background art.
 // Emulator stuff...
 #include "basic.h"	// BASIC     ROM
 #include "kernal.h"	// Kernal    ROM
-//#include "diagC64.h"	// Cart      ROM
 #include "characters.h" // Character ROM 
+//#include "diagC64.h"	// Cart      ROM
 
-#define VIDEOADDR 0x400		// Start of video buffer in the address space.
-uint8_t sysram[0x10000];	// 64kb RAM
-char color_ram[1024];		// VIC-II extrenal RAM
-uint8_t cia_1_port_a ;		// Port A
-uint8_t shaddow_io[0x1000] ;	// Writes to Hardware saved like in a hacking cartridge.
+#define VIDEOADDR 0x400			// Start of video buffer in the address space.
+uint8_t sysram[0x10000];		// 64kb RAM
+uint8_t color_ram[1024];		// VIC-II extrenal RAM
+uint8_t cia_1_port_a_data ;		// Port A
+uint8_t cia_1_port_b_data ;		// Port B
+uint8_t cia_1_port_a_direction ;	// Port A
+uint8_t cia_1_port_b_direction ;	// Port B
+uint8_t shaddow_io[0x1000] ;		// Writes to Hardware saved like in a hacking cartridge.
 
 // Define external C64 palette - Possible future, make the colors address maped into the C64 memory space, a great easy upgrade of the C64.
 const unsigned int c64_palette[16] = {
@@ -222,10 +225,10 @@ uint8_t read6502(uint16_t address){
 		if (address >= 0xDC00 && address <= 0xDCFF){ // mirrored every 16 bytes within its 256-byte block.
 			printf("CIA #1 Read  - from 0x%X ",address); fflush(stdout);  // Forces the buffer to flush immediately
 			switch (address & 0xFF0F){ // implementation of registers... with mirroring
-				case 0xDC00:	printf("Port A data   0x%02X            \n",cia_1_port_a); return cia_1_port_a;  // Column outputs 
-				case 0xDC01:	printf("Port B data                  \n"); return 0; // 151 ; // Row inputs
-				case 0xDC02:	printf("Port A Direction             \n"); return 0;
-				case 0xDC03:	printf("Port B Direction             \n"); return 0;
+				case 0xDC00:	printf("Port A data   0x%02X            \n",cia_1_port_a_data); return cia_1_port_a_data;  // Column outputs 
+				case 0xDC01:	printf("Port B data   0x%02X            \n",cia_1_port_b_data); return cia_1_port_b_data; // 151 ; // Row inputs
+				case 0xDC02:	printf("Port A Direction             \n"); return cia_1_port_a_direction;
+				case 0xDC03:	printf("Port B Direction             \n"); return cia_1_port_b_direction;
 				case 0xDC04:	printf("TIMER A LOW                  \n"); return 0;
 				case 0xDC05:	printf("TIMER A HIGH                 \n"); return 0;
 				case 0xDC06:	printf("TIMER B LOW                  \n"); return 0;
@@ -376,10 +379,10 @@ void write6502(uint16_t address, uint8_t value){
 			if (address >= 0xDC00 && address <= 0xDCFF){ 
 				printf("CIA #1 Write - 0x%02X to 0x%04X ",value,address); fflush(stdout);  // Forces the buffer to flush immediately
 				switch (address){ // implementation of registers...
-					case 0xDC00:	printf("Port A data @ PC = 0x%X\n",getpc()); cia_1_port_a = value ; return; // Keyboard columns // return 151; // hämtat från en C64 vad default värdet är från tangentbordet.
-					case 0xDC01:	printf("Port B data\n"); return; // Keyboard rows
-					case 0xDC02:	printf("Port A Direction - 1=output, 0=input\n"); return; 
-					case 0xDC03:	printf("Port B Direction - 1=output, 0=input\n"); return; 
+					case 0xDC00:	printf("Port A data @ PC = 0x%X\n",getpc());	cia_1_port_a_data = value ; return; // Keyboard columns // return 151; // hämtat från en C64 vad default värdet är från tangentbordet.
+					case 0xDC01:	printf("Port B data\n"); 			cia_1_port_b_data = value ; return; // Keyboard rows
+					case 0xDC02:	printf("Port A Direction - 1=output, 0=input\n"); cia_1_port_a_direction = value ; return; 
+					case 0xDC03:	printf("Port B Direction - 1=output, 0=input\n"); cia_1_port_b_direction = value ; return; 
 					case 0xDC04:	printf("Timer A Low             \n"); return; 
 					case 0xDC05:	printf("Timer A High            \n"); return; 
 					case 0xDC06:	printf("Timer B Low             \n"); return; 
@@ -422,7 +425,7 @@ void write6502(uint16_t address, uint8_t value){
 		if (address >= 0xD000 && address <= 0xDFFF){ // Hardware Registers
 			printf("0x%X Fix emulator!!! Uknown Hardware Write (range 0xD000 - 0xDFFF) with value 0x%x \n", address, value); return;
 		}
-		printf("Wow!!! strange!\n"); fflush(stdout);	
+		printf("Wow!!! strange!\n"); fflush(stdout); exit(0);
 	}
 }
 
@@ -505,9 +508,8 @@ void ikigui_map_draw_charrom( // Some extention that is used over the regular ik
 int main() {
 	ikigui_image_make(&bg, WIN_WIDTH,WIN_HEIGHT);				// Create a background image
 	ikigui_image_gradient(&bg,0xffccdd22, 0xffc0d020);			// Fill background image with a gradient
-	ikigui_include_char_rom_file(&font,"c64_swedish2.bin"); 		// Load Character ROM
 	ikigui_window_open(&mywin, "C64 BASIC EMULATOR", WIN_WIDTH, WIN_HEIGHT);// Open a window for the emulators graphics frame buffer, and real time emulator status like a overlay over the graphics.
-	ikigui_map_init(&font_map,&mywin.image,&font ,0,0,0,8,8,40,27);		// VIC-64 Character display
+	ikigui_map_init(&font_map,&mywin.image,&font ,0,0,0,8,8,40,25);		// VIC-64 Character display, with 40 columns and 25 lines.
 	font.color = 0x114433 ;
 	font_map.map = &sysram[VIDEOADDR];	// We switch out tha allocated char buffer given by my lib.
 	sysram[1] = 7; 				// PLA start setting. The reset vector is in KERNAL ROM so it has to be availible on reset. Made by resistors in the c64? before setting the 6510 GPIO port pins to outputs for the PLA.
@@ -567,5 +569,4 @@ int main() {
 		// ikigui_map_draw_charrom(&font_map, c64_swedish2, (uint8_t *)&color_ram,NULL, c64_palette, 0, 0);
 		// Draw sprites here - Do we need them? 
 	}
-
 }
